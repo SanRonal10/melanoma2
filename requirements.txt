@@ -3,3 +3,4 @@ pillow
 numpy
 joblib
 scikit-learn
+huggingface_hub
