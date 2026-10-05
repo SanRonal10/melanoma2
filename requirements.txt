@@ -3,4 +3,3 @@ pillow
 numpy
 joblib
 scikit-learn
-gdown
