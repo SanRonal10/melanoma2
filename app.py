@@ -1,9 +1,9 @@
 import os
-import urllib.request
 import joblib
 import numpy as np
 import streamlit as st
 from PIL import Image
+from huggingface_hub import hf_hub_download
 
 # Configuración de página
 st.set_page_config(
@@ -15,56 +15,23 @@ st.set_page_config(
 st.title("🩺 Diagnóstico Prematuro de Melanoma")
 st.write("Sube una imagen de una lesión cutánea para evaluar si es benigna o melanoma.")
 
-MODEL_URL = "https://github.com/SanRonal10/melanoma2/releases/download/v1.0.0/mimodelo.pkl"
-MODEL_FILENAME = "mimodelo.pkl"
-
-def download_file_if_missing():
-    """Descarga el archivo físico si no existe o si el archivo local está vacío/corrupto."""
-    need_download = False
-
-    if not os.path.exists(MODEL_FILENAME):
-        need_download = True
-    elif os.path.getsize(MODEL_FILENAME) < 1000:  # Si pesa menos de 1 KB, está corrupto o es HTML
-        os.remove(MODEL_FILENAME)
-        need_download = True
-
-    if need_download:
-        with st.spinner("Descargando el modelo de diagnóstico desde GitHub Releases..."):
-            req = urllib.request.Request(
-                MODEL_URL,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            )
-            with urllib.request.urlopen(req) as response:
-                content = response.read()
-                with open(MODEL_FILENAME, 'wb') as f:
-                    f.write(content)
-
 @st.cache_resource
-def load_model():
-    """Garantiza la descarga física antes de invocar joblib.load con la ruta del archivo."""
-    download_file_if_missing()
-    # Importante: pasar el string con la ruta del archivo, no un objeto BytesIO
-    return joblib.load(MODEL_FILENAME)
-
-# Carga del modelo con gestión de excepciones y limpieza automática
-try:
-    model = load_model()
-except Exception as e:
-    if os.path.exists(MODEL_FILENAME):
-        try:
-            os.remove(MODEL_FILENAME)
-        except Exception:
-            pass
-    # Limpia la caché interna de Streamlit
-    st.cache_resource.clear()
-    st.error(
-        f"Error al cargar el archivo de modelo: {e}. "
-        "El archivo corrupto se ha eliminado. Por favor vuelve a cargar la página."
+def load_model_from_hf():
+    """Descarga el modelo binario de Hugging Face y lo carga de manera segura."""
+    # Sustituye con tu repo y nombre de archivo exactos
+    model_path = hf_hub_download(
+        repo_id="SanRonal10/melanoma-model",  # Cambiar por tu repositorio de Hugging Face
+        filename="mimodelo.pkl"
     )
+    return joblib.load(model_path)
+
+try:
+    model = load_model_from_hf()
+except Exception as e:
+    st.error(f"Error al cargar el archivo de modelo: {e}. Por favor vuelve a cargar la página.")
     st.stop()
 
 def preprocess_image(image):
-    """Preprocesa la imagen para los formatos requeridos por el modelo."""
     img = image.convert('RGB').resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
     
@@ -73,7 +40,6 @@ def preprocess_image(image):
     
     return tensor_features, flat_features
 
-# Formulario de carga de imágenes
 uploaded_file = st.file_uploader("Carga una imagen de lesión cutánea (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
