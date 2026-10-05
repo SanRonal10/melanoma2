@@ -17,7 +17,7 @@ st.write("Sube una imagen de una lesión cutánea para evaluar si es benigna o m
 
 # ==============================================================================
 # CONFIGURACIÓN DE GOOGLE DRIVE
-# Coloca aquí el FILE_ID de tu archivo subido a Google Drive
+# ==============================================================================
 DRIVE_FILE_ID = "1DOc2I8MRnelWOnssNkAGrSNd4zAkh5m8"
 MODEL_FILENAME = "mimodelo.pkl"
 # ==============================================================================
@@ -30,18 +30,17 @@ def load_model():
     """
     if not os.path.exists(MODEL_FILENAME):
         url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
-        with st.spinner("Descargando modelo desde Google Drive..."):
-            # fuzzy=True permite omitir la pantalla de confirmación de virus en archivos grandes
-            gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
+        with st.spinner("Descargando modelo desde Google Drive (esto solo ocurre una vez)..."):
+            gdown.download(url=url, output=MODEL_FILENAME, quiet=False)
             
     return joblib.load(MODEL_FILENAME)
 
 
-# Intentar cargar el modelo con control de excepciones
+# Intentar cargar el modelo con control de excepciones y limpieza automática
 try:
     model = load_model()
 except Exception as e:
-    # Si el archivo descargado está corrupto o es HTML, se elimina para no bloquear futuros intentos
+    # Si la descarga falló o el archivo quedó corrupto, se elimina para no bloquear reintentos
     if os.path.exists(MODEL_FILENAME):
         os.remove(MODEL_FILENAME)
     st.error(
