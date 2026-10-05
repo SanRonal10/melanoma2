@@ -1,11 +1,11 @@
 import os
-import gdown
+import urllib.request
 import joblib
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# Configuración inicial de Streamlit
+# Configuración de página en Streamlit
 st.set_page_config(
     page_title="Detección de Melanoma",
     page_icon="🩺",
@@ -15,29 +15,23 @@ st.set_page_config(
 st.title("🩺 Diagnóstico Prematuro de Melanoma")
 st.write("Sube una imagen de una lesión cutánea para evaluar si es benigna o melanoma.")
 
-DRIVE_FILE_ID = "1DOc2I8MRnelWOnssNkAGrSNd4zAkh5m8"
+# URL de GitHub Release
+MODEL_URL = "https://github.com/SanRonal10/melanoma2/releases/download/v1.0.0/mimodelo.pkl"
 MODEL_FILENAME = "mimodelo.pkl"
 
 @st.cache_resource
 def load_model():
-    """Descarga el modelo desde Google Drive usando sintaxis estándar de gdown."""
+    """Descarga el archivo del modelo desde GitHub Release y lo carga en memoria."""
     if not os.path.exists(MODEL_FILENAME):
-        url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
-        with st.spinner("Descargando archivo de modelo desde Google Drive..."):
-            # Llamada corregida sin argumentos incompatibles
-            gdown.download(url=url, output=MODEL_FILENAME, quiet=False)
-        
-        # Verificación de integridad para evitar archivos HTML corruptos
-        if os.path.exists(MODEL_FILENAME):
-            with open(MODEL_FILENAME, "rb") as f:
-                header = f.read(100)
-                if b"<html" in header.lower() or b"<!doctype html" in header.lower():
-                    os.remove(MODEL_FILENAME)
-                    raise ValueError("Google Drive devolvió una página HTML en lugar del modelo binario .pkl. Verifica que el archivo sea público.")
+        with st.spinner("Descargando el modelo de diagnóstico desde GitHub Releases..."):
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            req = urllib.request.Request(MODEL_URL, headers=headers)
+            with urllib.request.urlopen(req) as response, open(MODEL_FILENAME, 'wb') as out_file:
+                out_file.write(response.read())
 
     return joblib.load(MODEL_FILENAME)
 
-# Carga con manejo de excepciones
+# Carga segura del modelo
 try:
     model = load_model()
 except Exception as e:
@@ -50,22 +44,25 @@ except Exception as e:
     st.stop()
 
 def preprocess_image(image):
+    """Preprocesa la imagen de entrada ajustando tamaño y normalizando píxeles."""
     img = image.convert('RGB').resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
     
+    # Formato tensor 4D y formato plano 2D para compatibilidad con distintos modelos
     tensor_features = np.expand_dims(img_array / 255.0, axis=0)
     flat_features = img_array.flatten().reshape(1, -1)
     
     return tensor_features, flat_features
 
-uploaded_file = st.file_uploader("Carga una imagen (JPG, PNG, JPEG)", type=["jpg", "jpeg", "png"])
+# Módulo de carga de imágenes
+uploaded_file = st.file_uploader("Carga una imagen de lesión cutánea (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Imagen cargada", use_container_width=True)
+    st.image(image, caption="Imagen cargada para diagnóstico", use_container_width=True)
     
     if st.button("Realizar Predicción", type="primary"):
-        with st.spinner("Procesando imagen y evaluando..."):
+        with st.spinner("Procesando la imagen con el modelo de clasificación..."):
             tensor_img, flat_img = preprocess_image(image)
             
             try:
@@ -73,6 +70,7 @@ if uploaded_file is not None:
             except Exception:
                 prediction = model.predict(flat_img)
             
+            # Evaluación de la predicción retornada
             if isinstance(prediction, (list, np.ndarray)):
                 pred_val = prediction[0]
                 if isinstance(pred_val, (list, np.ndarray)):
@@ -83,6 +81,6 @@ if uploaded_file is not None:
             pred_num = float(pred_val)
             
             if pred_num >= 0.5 or pred_num == 1:
-                st.error("⚠️ **Resultado:** Posible Melanoma detectado.")
+                st.error("⚠️ **Resultado:** Alta probabilidad de Melanoma detectada.")
             else:
                 st.success("✅ **Resultado:** Posible Lesión Benigna.")
