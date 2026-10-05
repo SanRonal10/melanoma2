@@ -1,12 +1,16 @@
 import os
-import dill  # Necesario para des-serializar modelos guardados con dill/joblib
+import dill
 import gdown
 import joblib
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# Configuración inicial de la interfaz de Streamlit
+# Importar TensorFlow y Keras
+import tensorflow as tf
+import keras
+
+# Configuración de interfaz
 st.set_page_config(
     page_title="Detección de Melanoma", page_icon="🩺", layout="centered"
 )
@@ -26,21 +30,27 @@ MODEL_FILENAME = "mimodelo.pkl"
 
 @st.cache_resource
 def load_model():
-    """Descarga el modelo desde Google Drive si no existe localmente
+    """Descarga el modelo desde Google Drive e intenta cargarlo como
 
-    y lo carga en memoria con joblib/dill.
+    Keras o Pickle/Joblib según su estructura.
     """
     if not os.path.exists(MODEL_FILENAME):
         url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
         with st.spinner(
-            "Descargando modelo desde Google Drive (esto solo ocurre una vez)..."
+            "Descargando modelo desde Google Drive (solo ocurre la primera vez)..."
         ):
             gdown.download(url=url, output=MODEL_FILENAME, quiet=False)
 
+    # Intento 1: Carga nativa de Keras (si el .pkl es un modelo Keras re-nombrado o exportado)
+    try:
+        return keras.models.load_model(MODEL_FILENAME)
+    except Exception:
+        pass
+
+    # Intento 2: Carga estándar de Joblib/Pickle/Dill
     return joblib.load(MODEL_FILENAME)
 
 
-# Intentar cargar el modelo con control de excepciones
 try:
     model = load_model()
 except Exception as e:
@@ -54,23 +64,22 @@ except Exception as e:
 
 
 def preprocess_image(image):
-    """Preprocesa la imagen cargada tanto para modelos tabulares/scikit-learn
+    """Preprocesa la imagen tanto en formato Tensor 4D (Keras/CNN)
 
-    (2D) como para redes neuronales/Keras/TensorFlow (4D).
+    como en Vector 2D (Scikit-Learn).
     """
     img = image.convert("RGB").resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
 
-    # Formato aplanado 2D (Scikit-Learn, XGBoost, Random Forest)
-    flat_features = img_array.flatten().reshape(1, -1)
-
-    # Formato tensor 4D normalizado (TensorFlow, Keras, CNNs)
+    # Tensor 4D normalizado [0, 1] para Keras / TensorFlow
     tensor_features = np.expand_dims(img_array / 255.0, axis=0)
 
-    return flat_features, tensor_features
+    # Vector aplanado 2D para Scikit-Learn
+    flat_features = img_array.flatten().reshape(1, -1)
+
+    return tensor_features, flat_features
 
 
-# Carga de la imagen por parte del usuario
 uploaded_file = st.file_uploader(
     "Carga una imagen (JPG, PNG, JPEG)", type=["jpg", "jpeg", "png"]
 )
@@ -81,15 +90,15 @@ if uploaded_file is not None:
 
     if st.button("Realizar Predicción", type="primary"):
         with st.spinner("Procesando imagen y evaluando..."):
-            flat_img, tensor_img = preprocess_image(image)
+            tensor_img, flat_img = preprocess_image(image)
 
-            # Intento híbrido de predicción según la estructura del modelo
+            # Intentar predicción con formato Tensor 4D primero (Keras)
             try:
-                prediction = model.predict(flat_img)
-            except Exception:
                 prediction = model.predict(tensor_img)
+            except Exception:
+                prediction = model.predict(flat_img)
 
-            # Extracción del valor numérico de la predicción
+            # Extracción del resultado numérico
             if isinstance(prediction, (list, np.ndarray)):
                 pred_val = prediction[0]
                 if isinstance(pred_val, (list, np.ndarray)):
@@ -99,7 +108,6 @@ if uploaded_file is not None:
 
             pred_num = float(pred_val)
 
-            # Umbral de diagnóstico
             if pred_num >= 0.5 or pred_num == 1:
                 st.error("⚠️ **Resultado:** Posible Melanoma detectado.")
             else:
