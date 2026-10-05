@@ -5,7 +5,7 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
-# Configuración de Streamlit
+# Configuración inicial de Streamlit
 st.set_page_config(
     page_title="Detección de Melanoma",
     page_icon="🩺",
@@ -20,23 +20,24 @@ MODEL_FILENAME = "mimodelo.pkl"
 
 @st.cache_resource
 def load_model():
-    """Descarga el modelo usando gdown para superar la pantalla de advertencia de Google Drive."""
+    """Descarga el modelo desde Google Drive usando sintaxis estándar de gdown."""
     if not os.path.exists(MODEL_FILENAME):
         url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
         with st.spinner("Descargando archivo de modelo desde Google Drive..."):
-            gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
+            # Llamada corregida sin argumentos incompatibles
+            gdown.download(url=url, output=MODEL_FILENAME, quiet=False)
         
-        # Verificación de integridad: si el archivo descargado es un HTML (error de Drive), eliminarlo
+        # Verificación de integridad para evitar archivos HTML corruptos
         if os.path.exists(MODEL_FILENAME):
             with open(MODEL_FILENAME, "rb") as f:
                 header = f.read(100)
                 if b"<html" in header.lower() or b"<!doctype html" in header.lower():
                     os.remove(MODEL_FILENAME)
-                    raise ValueError("Google Drive devolvió una página HTML de advertencia en lugar del modelo binario .pkl.")
+                    raise ValueError("Google Drive devolvió una página HTML en lugar del modelo binario .pkl. Verifica que el archivo sea público.")
 
     return joblib.load(MODEL_FILENAME)
 
-# Carga con manejo de errores y limpieza automática
+# Carga con manejo de excepciones
 try:
     model = load_model()
 except Exception as e:
